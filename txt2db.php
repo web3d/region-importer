@@ -18,8 +18,8 @@ $options = array(
 $dbh = new PDO($dsn, $username, $password, $options);
 
 $sth = $dbh->prepare('
-    INSERT INTO region (id, parent_id, name)
-    VALUES (:id, :parent_id, :name)
+    INSERT INTO region (id, parent_id, name, level)
+    VALUES (:id, :parent_id, :name, :level)
 ');
 
 $parent = array(0);
@@ -36,14 +36,30 @@ while (!feof($handle)) {
     list($row, $id, $name) = $matches;
 
     $level = strlen(preg_replace('/(00){1,2}$/', '', $id)) / 2;
+	// 直辖市
+	if ($level === 1 && mb_substr($name, -1) === '市') {
+		$next_parent_id = substr($id, 0, 2) . '0100';
 
-    $parent_id = $parent[$level - 1];
+		// 最新发布的信息里，直辖市变成只有两级了 得补充一条二级的，保持三级结构的兼容
+		$sth->bindValue(':id', $next_parent_id, PDO::PARAM_INT);
+		$sth->bindValue(':parent_id', $id, PDO::PARAM_INT);
+		$sth->bindValue(':name', $name);
+		$sth->bindValue(':level', $level + 1);
 
-    $parent[$level] = $id;
+		$sth->execute();
+
+		$parent_id = 0;
+		$parent[$level + 1] = $next_parent_id;
+	} else {
+		$parent[$level] = $id;
+
+        $parent_id = (int) $parent[$level - 1];
+	}
 
     $sth->bindValue(':id', $id, PDO::PARAM_INT);
     $sth->bindValue(':parent_id', $parent_id, PDO::PARAM_INT);
     $sth->bindValue(':name', $name);
+    $sth->bindValue(':level', $level);
 
     $sth->execute();
 }
